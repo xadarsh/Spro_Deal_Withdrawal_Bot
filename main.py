@@ -15,6 +15,8 @@ import string
 import random
 from module.broadcast import setup_broadcast_handlers
 from module.connect_user import setup_connect_user_handlers
+from web_server import run_web_server
+import threading
 
 
 
@@ -510,6 +512,10 @@ async def handle_withdraw_done(client: Client, query: CallbackQuery):
 # Main Runner
 # ----------------------------
 if __name__ == "__main__":
+    # Start web server in a separate thread
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+    
     setup_hijack_handlers(app)
     register_data_commands(app)
     setup_broadcast_handlers(app)
@@ -520,6 +526,7 @@ if __name__ == "__main__":
     print("✅ Bot is starting...")
     print("✅ Database connected successfully")
     print("✅ All handlers registered")
+    print("✅ Web server started on port 8000")
     print("=" * 50)
     print("🤖 Bot is now running and ready to accept requests!")
     print("=" * 50)
