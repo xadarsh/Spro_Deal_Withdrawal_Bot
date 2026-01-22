@@ -41,3 +41,4 @@ docker run --env-file .env spro-deal-bot
 - The bot will automatically restart if it crashes (Koyeb handles this)
 - Session files are stored in container (will reset on redeploy)
 - Make sure MongoDB is accessible from Koyeb's servers
+- TgCrypto is installed for better performance
