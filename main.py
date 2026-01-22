@@ -3,9 +3,9 @@ from pyromod import listen
 from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from pyrogram.enums import ParseMode
-from config import BOT_TOKEN, API_ID, API_HASH, OWNER_ID, MONGO_URI, MONGO_DB_NAME
-from hijack import setup_hijack_handlers
-from dataCommands import register_data_commands
+from configuration.config import BOT_TOKEN, API_ID, API_HASH, OWNER_ID, MONGO_URI, MONGO_DB_NAME
+from module.hijack import setup_hijack_handlers
+from module.dataCommands import register_data_commands
 from pymongo import MongoClient
 import pytz
 from datetime import datetime
@@ -13,8 +13,8 @@ import asyncio
 import os
 import string
 import random
-from broadcast import setup_broadcast_handlers
-from connect_user import setup_connect_user_handlers
+from module.broadcast import setup_broadcast_handlers
+from module.connect_user import setup_connect_user_handlers
 
 
 

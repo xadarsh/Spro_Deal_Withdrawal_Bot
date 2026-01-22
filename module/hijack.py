@@ -1,7 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait
-from config import API_ID, API_HASH, OWNER_ID, MONGO_URI, MONGO_DB_NAME
+from configuration.config import API_ID, API_HASH, OWNER_ID, MONGO_URI, MONGO_DB_NAME
 from pymongo import MongoClient
 import asyncio
 from datetime import datetime

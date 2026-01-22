@@ -1,7 +1,7 @@
 from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
-from config import OWNER_ID, MONGO_URI, MONGO_DB_NAME
+from configuration.config import OWNER_ID, MONGO_URI, MONGO_DB_NAME
 from pymongo import MongoClient
 import asyncio
 

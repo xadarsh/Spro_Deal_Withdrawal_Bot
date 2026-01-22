@@ -9,7 +9,7 @@ import os
 import pytz
 import asyncio
 from datetime import datetime
-from config import API_ID, API_HASH, MONGO_URI, MONGO_DB_NAME, OWNER_ID
+from configuration.config import API_ID, API_HASH, MONGO_URI, MONGO_DB_NAME, OWNER_ID
 from pymongo import MongoClient
 
 # MongoDB setup
