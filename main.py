@@ -344,7 +344,9 @@ async def withdraw_command(client: Client, message: Message):
             f"✅ <b>Your request has been submitted successfully!</b>\n\n"
             f"📋 <b>Withdrawal Request ID:</b> <code>{display_id}</code>\n\n"
             f"🚀 Your withdrawal request will be processed very soon.\n"
-            f"📢 You'll receive a notification once the withdrawal proceeds.",
+            f"📢 You'll receive a notification once the withdrawal proceeds.\n\n"
+            f"⚠️ <b>IMPORTANT:</b> The credentials must be correct for account verification, "
+            f"otherwise the withdrawal request will be rejected.",
             parse_mode=ParseMode.HTML
         )
     except asyncio.TimeoutError:
@@ -457,7 +459,9 @@ async def handle_retry_same(client: Client, query: CallbackQuery):
             text=f"✅ <b>Your request has been submitted successfully!</b>\n\n"
                  f"📋 <b>Withdrawal Request ID:</b> <code>{display_id}</code>\n\n"
                  f"🚀 Your withdrawal request will be processed very soon.\n"
-                 f"📢 You'll receive a notification once the withdrawal proceeds.",
+                 f"📢 You'll receive a notification once the withdrawal proceeds.\n\n"
+                 f"⚠️ <b>IMPORTANT:</b> The credentials must be correct for account verification, "
+                 f"otherwise the withdrawal request will be rejected.",
             parse_mode=ParseMode.HTML
         )
     except asyncio.TimeoutError:
